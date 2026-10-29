@@ -1,6 +1,8 @@
+
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Quicksand, Nunito, Geist_Mono } from 'next/font/google'
+import { CartProvider } from '@/lib/cart-context'
 import './globals.css'
 
 const quicksand = Quicksand({
@@ -8,11 +10,13 @@ const quicksand = Quicksand({
   subsets: ['latin'],
   display: 'swap',
 })
+
 const nunito = Nunito({
   variable: '--font-nunito',
   subsets: ['latin'],
   display: 'swap',
 })
+
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
@@ -88,7 +92,9 @@ export default function RootLayout({
       className={`${quicksand.variable} ${nunito.variable} ${geistMono.variable} bg-background`}
     >
       <body className="font-sans antialiased">
-        {children}
+        <CartProvider>
+          {children}
+        </CartProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
