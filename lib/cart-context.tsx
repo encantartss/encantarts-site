@@ -1,132 +1,220 @@
 
 'use client'
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { Trash2, Minus, Plus, Tag, Truck, ShoppingBag } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { formatPrice } from '@/lib/data'
+import { useCart } from '@/lib/cart-context'
 
-export type CartItem = {
-  id: string
-  slug: string
-  name: string
-  image: string
-  price: number
-  qty: number
-  custom: Record<string, string>
-  files: string[]
-}
+export function CartView() {
+  const {
+    items,
+    hydrated,
+    updateQty,
+    removeItem,
+    subtotal,
+  } = useCart()
 
-type AddCartItem = Omit<CartItem, 'id'>
+  const [cep, setCep] = useState('')
+  const [shippingMessage, setShippingMessage] = useState('')
 
-type CartContextValue = {
-  items: CartItem[]
-  hydrated: boolean
-  addItem: (item: AddCartItem) => void
-  updateQty: (id: string, qty: number) => void
-  removeItem: (id: string) => void
-  clearCart: () => void
-  subtotal: number
-}
-
-const STORAGE_KEY = 'encantarts-cart-v1'
-
-const CartContext = createContext<CartContextValue | null>(null)
-
-export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([])
-  const [hydrated, setHydrated] = useState(false)
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          setItems(parsed as CartItem[])
-        }
-      }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY)
-    } finally {
-      setHydrated(true)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!hydrated) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-  }, [items, hydrated])
-
-  const addItem = useCallback((item: AddCartItem) => {
-    setItems((current) => [
-      ...current,
-      { ...item, id: crypto.randomUUID() },
-    ])
-  }, [])
-
-  const updateQty = useCallback((id: string, qty: number) => {
-    if (!Number.isInteger(qty) || qty < 1) return
-
-    setItems((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, qty } : item,
-      ),
+  if (!hydrated) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-8 text-center">
+        Carregando seu carrinho...
+      </div>
     )
-  }, [])
-
-  const removeItem = useCallback((id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id))
-  }, [])
-
-  const clearCart = useCallback(() => {
-    setItems([])
-  }, [])
-
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.price * item.qty, 0),
-    [items],
-  )
-
-  const value = useMemo(
-    () => ({
-      items,
-      hydrated,
-      addItem,
-      updateQty,
-      removeItem,
-      clearCart,
-      subtotal,
-    }),
-    [
-      items,
-      hydrated,
-      addItem,
-      updateQty,
-      removeItem,
-      clearCart,
-      subtotal,
-    ],
-  )
-
-  return (
-    <CartContext.Provider value={value}>
-      {children}
-    </CartContext.Provider>
-  )
-}
-
-export function useCart() {
-  const context = useContext(CartContext)
-
-  if (!context) {
-    throw new Error('useCart precisa estar dentro de CartProvider')
   }
 
-  return context
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
+        <ShoppingBag className="mx-auto size-12 text-muted-foreground" />
+        <p className="mt-4 font-heading text-lg font-bold">
+          Seu carrinho está vazio
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Que tal encantar alguém com nossos produtos?
+        </p>
+        <Button asChild className="mt-5 rounded-full">
+          <Link href="/categorias">Ver produtos</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
+      <div className="space-y-4">
+        {items.map((item) => {
+          const customText = Object.entries(item.custom ?? {})
+            .filter(([, value]) => value)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(' • ')
+
+          return (
+            <div
+              key={item.id}
+              className="flex gap-4 rounded-2xl border border-border bg-card p-4"
+            >
+              <div className="relative size-24 shrink-0 overflow-hidden rounded-xl bg-muted">
+                <Image
+                  src={item.image || '/placeholder.svg'}
+                  alt={item.name}
+                  fill
+                  sizes="96px"
+                  className="object-cover"
+                />
+              </div>
+
+              <div className="flex flex-1 flex-col">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-heading font-bold leading-snug">
+                      {item.name}
+                    </h3>
+
+                    {customText && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {customText}
+                      </p>
+                    )}
+
+                    {item.files?.length > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.files.length} arquivo(s) informado(s)
+                      </p>
+                    )}
+
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {formatPrice(item.price)} cada
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    aria-label={`Remover ${item.name}`}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+
+                <div className="mt-auto flex items-center justify-between pt-3">
+                  <div className="flex items-center rounded-full border border-border">
+                    <button
+                      onClick={() => updateQty(item.id, item.qty - 1)}
+                      disabled={item.qty <= 1}
+                      className="flex size-8 items-center justify-center disabled:opacity-40"
+                      aria-label="Diminuir quantidade"
+                    >
+                      <Minus className="size-3.5" />
+                    </button>
+
+                    <span className="w-8 text-center text-sm font-medium">
+                      {item.qty}
+                    </span>
+
+                    <button
+                      onClick={() => updateQty(item.id, item.qty + 1)}
+                      className="flex size-8 items-center justify-center"
+                      aria-label="Aumentar quantidade"
+                    >
+                      <Plus className="size-3.5" />
+                    </button>
+                  </div>
+
+                  <span className="font-heading font-bold text-primary">
+                    {formatPrice(item.price * item.qty)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <aside className="space-y-4 lg:sticky lg:top-24 lg:h-fit">
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <h3 className="flex items-center gap-2 font-heading text-sm font-bold">
+            <Truck className="size-4 text-primary" />
+            Calcular frete
+          </h3>
+
+          <p className="mt-2 text-xs text-muted-foreground">
+            Informe seu CEP para preparar a consulta de frete.
+          </p>
+
+          <div className="mt-3 flex gap-2">
+            <Input
+              value={cep}
+              onChange={(e) => {
+                setCep(e.target.value.replace(/\D/g, '').slice(0, 8))
+                setShippingMessage('')
+              }}
+              placeholder="Digite seu CEP"
+              inputMode="numeric"
+              maxLength={8}
+            />
+
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShippingMessage(
+                  cep.length === 8
+                    ? 'A consulta real da SuperFrete ainda precisa ser configurada.'
+                    : 'Digite um CEP válido com 8 números.',
+                )
+              }}
+            >
+              Consultar
+            </Button>
+          </div>
+
+          {shippingMessage && (
+            <p className="mt-2 text-xs text-muted-foreground" role="status">
+              {shippingMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Subtotal</dt>
+              <dd>{formatPrice(subtotal)}</dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">Frete</dt>
+              <dd>A calcular</dd>
+            </div>
+          </dl>
+
+          <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3">
+            <span className="font-medium">Total parcial</span>
+            <span className="font-heading text-2xl font-bold text-primary">
+              {formatPrice(subtotal)}
+            </span>
+          </div>
+
+          <Button
+            size="lg"
+            className="mt-4 w-full rounded-full"
+            disabled
+          >
+            Finalizar compra
+          </Button>
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            O checkout será liberado após a integração do frete e do PagBank.
+          </p>
+        </div>
+      </aside>
+    </div>
+  )
 }
