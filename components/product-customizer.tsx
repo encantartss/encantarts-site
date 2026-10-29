@@ -1,6 +1,8 @@
+
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Upload, X, ShoppingBag, FileImage, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { type Product, formatPrice } from '@/lib/data'
+import { useCart } from '@/lib/cart-context'
 
 export function ProductCustomizer({ product }: { product: Product }) {
+  const router = useRouter()
+  const { addItem } = useCart()
+
   const [quantity, setQuantity] = useState(1)
   const [confirmed, setConfirmed] = useState(false)
   const [files, setFiles] = useState<string[]>([])
@@ -24,26 +30,53 @@ export function ProductCustomizer({ product }: { product: Product }) {
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const list = e.target.files
     if (!list) return
-    const names = Array.from(list).map((f) => f.name)
+
+    const names = Array.from(list).map((file) => file.name)
     setFiles((prev) => [...prev, ...names])
+    e.target.value = ''
   }
 
   function removeFile(name: string) {
-    setFiles((prev) => prev.filter((f) => f !== name))
+    setFiles((prev) => prev.filter((file) => file !== name))
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!confirmed) return
-    // Fase 2: enviar para a API / carrinho persistido
+
+    if (!confirmed || added) return
+
+    const form = e.currentTarget
+    const formData = new FormData(form)
+    const custom: Record<string, string> = {}
+
+    for (const field of product.customFields) {
+      const value = formData.get(field.id)
+
+      if (typeof value === 'string') {
+        custom[field.id] = value
+      }
+    }
+
+    addItem({
+      slug: product.slug,
+      name: product.name,
+      image: product.image,
+      price: product.price,
+      qty: quantity,
+      custom,
+      files,
+    })
+
     setAdded(true)
-    setTimeout(() => setAdded(false), 3000)
+    router.push('/carrinho')
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <h2 className="font-heading text-lg font-bold">Personalize seu pedido</h2>
+        <h2 className="font-heading text-lg font-bold">
+          Personalize seu pedido
+        </h2>
         <p className="text-sm text-muted-foreground">
           Preencha os detalhes para deixarmos tudo com a sua cara.
         </p>
@@ -57,7 +90,9 @@ export function ProductCustomizer({ product }: { product: Product }) {
           >
             <Label htmlFor={field.id} className="mb-1.5 block">
               {field.label}
-              {field.required && <span className="ml-0.5 text-primary">*</span>}
+              {field.required && (
+                <span className="ml-0.5 text-primary">*</span>
+              )}
             </Label>
 
             {field.type === 'textarea' ? (
@@ -69,14 +104,14 @@ export function ProductCustomizer({ product }: { product: Product }) {
                 rows={3}
               />
             ) : field.type === 'select' ? (
-              <Select name={field.id}>
+              <Select name={field.id} required={field.required}>
                 <SelectTrigger id={field.id}>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {field.options?.map((opt) => (
-                    <SelectItem key={opt} value={opt}>
-                      {opt}
+                  {field.options?.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -94,22 +129,27 @@ export function ProductCustomizer({ product }: { product: Product }) {
         ))}
       </div>
 
-      {/* Upload de arquivos */}
       <div>
-        <Label className="mb-1.5 block">Fotos, logotipo e referências</Label>
+        <Label className="mb-1.5 block">
+          Fotos, logotipo e referências
+        </Label>
+
         <label
           htmlFor="file-upload"
           className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/40 px-4 py-6 text-center transition-colors hover:border-primary hover:bg-muted"
         >
           <Upload className="size-6 text-primary" />
-          <span className="text-sm font-medium">Clique para enviar arquivos</span>
+          <span className="text-sm font-medium">
+            Clique para enviar arquivos
+          </span>
           <span className="text-xs text-muted-foreground">
             PNG, JPG ou PDF • até 10MB cada
           </span>
+
           <input
             id="file-upload"
             type="file"
-            accept="image/*,.pdf"
+            accept="image/png,image/jpeg,image/webp,application/pdf"
             multiple
             className="sr-only"
             onChange={handleUpload}
@@ -118,9 +158,9 @@ export function ProductCustomizer({ product }: { product: Product }) {
 
         {files.length > 0 && (
           <ul className="mt-3 space-y-2">
-            {files.map((name) => (
+            {files.map((name, index) => (
               <li
-                key={name}
+                key={`${name}-${index}`}
                 className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm"
               >
                 <span className="flex items-center gap-2 truncate">
@@ -141,7 +181,6 @@ export function ProductCustomizer({ product }: { product: Product }) {
         )}
       </div>
 
-      {/* Quantidade */}
       <div className="flex items-center gap-4">
         <Label className="font-medium">Quantidade</Label>
         <div className="flex items-center rounded-full border border-border">
@@ -165,7 +204,6 @@ export function ProductCustomizer({ product }: { product: Product }) {
         </div>
       </div>
 
-      {/* Confirmação obrigatória */}
       <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-secondary/40 p-4">
         <input
           type="checkbox"
@@ -188,7 +226,7 @@ export function ProductCustomizer({ product }: { product: Product }) {
       <Button
         type="submit"
         size="lg"
-        disabled={!confirmed}
+        disabled={!confirmed || added}
         className="w-full rounded-full"
       >
         {added ? (
@@ -203,6 +241,7 @@ export function ProductCustomizer({ product }: { product: Product }) {
           </>
         )}
       </Button>
+
       {!confirmed && (
         <p className="text-center text-xs text-muted-foreground">
           Marque a confirmação dos dados para continuar
